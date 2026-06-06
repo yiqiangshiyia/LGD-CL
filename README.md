@@ -1,6 +1,13 @@
 # LogCL
 The code of LogCL
 
+% \textbf{5) Sensitivity Analysis of Global Subgraph Size (Top-$N$):}
+% To evaluate the impact of the global subgraph sampling size on model performance, we test the hyperparameter \(N\) over \(\{10, 30, 50, 100, 200, 300\}\). The results show that model performance first improves and then declines as \(N\) increases, which verifies the effectiveness of the RWR sampling strategy. When \(N\) is too small, such as \(N=10\), the sampled subgraph misses key multi-hop topological information, leading to a substantial performance drop. In this case, the MRR on ICEWS14 is only 0.535.
+
+% The model achieves the best performance when \(N=50\). At this scale, the transition matrix that incorporates temporal decay and relation similarity can effectively focus on high-value historical entities. This provides the best trade-off between structural information coverage and noise filtering. However, when \(N\) further increases to 200 or 300, a large amount of irrelevant global noise is introduced. This weakens the targeted focusing capability of RWR and causes performance to decline again.
+
+
+
 ### Process data
 First, unpack the data files. Then generate the offline history subgraphs and the
 `(s, r) -> {dst}` dictionary used by valid / test sampling.
