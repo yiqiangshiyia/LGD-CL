@@ -7,7 +7,19 @@ To evaluate the impact of the global subgraph sampling size on model performance
 The model achieves the best performance when N=50. At this scale, the transition matrix that incorporates temporal decay and relation similarity can effectively focus on high-value historical entities. This provides the best trade-off between structural information coverage and noise filtering. However, when N further increases to 200 or 300, a large amount of irrelevant global noise is introduced. This weakens the targeted focusing capability of RWR and causes performance to decline again.
 <img width="3587" height="2391" alt="topn_mrr" src="https://github.com/user-attachments/assets/05f972c1-4285-40a0-9e6a-386c489bcc86" />
 
+## Repository Structure
+.
+├── data/               # Dataset files (ICEWS14, ICEWS18, etc.)
+├── src/                # Source code for the proposed model
+│   ├── models/         # Model architectures (R-GCN, Contrastive Modules)
+│   ├── utils/          # Data loaders, metric calculations
+│   └── main.py         # Training and evaluation script
+├── assets/             # Images for this README
+├── requirements.txt    # Python dependencies
+└── README.md           # This file
+
 ## Running Instructions
+All experiments were conducted on a single NVIDIA RTX A6000 (48GB) GPU.
 ### Environment Requirements
 ```
 pip install -r requirement.txt
