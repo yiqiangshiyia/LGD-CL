@@ -8,6 +8,7 @@ The model achieves the best performance when N=50. At this scale, the transition
 <img width="3587" height="2391" alt="topn_mrr" src="https://github.com/user-attachments/assets/05f972c1-4285-40a0-9e6a-386c489bcc86" />
 
 ## Repository Structure
+```
 .
 ├── data/               # Dataset files (ICEWS14, ICEWS18, etc.)
 ├── src/                # Source code for the proposed model
@@ -17,6 +18,7 @@ The model achieves the best performance when N=50. At this scale, the transition
 ├── assets/             # Images for this README
 ├── requirements.txt    # Python dependencies
 └── README.md           # This file
+```
 
 ## Running Instructions
 All experiments were conducted on a single NVIDIA RTX A6000 (48GB) GPU.
