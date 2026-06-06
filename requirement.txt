@@ -1,0 +1,14 @@
+# GPU torch: pip install torch==1.12.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113
+# DGL cu113: pip install dgl==1.0.2+cu113 -f https://data.dgl.ai/wheels/cu113/repo.html
+torch==1.12.0
+dgl-cu113==1.0.2
+numpy<2
+tqdm
+pandas
+rdflib
+# Module 1 (LLM-driven semantic prior injection): only used by data/encode_llm_prior.py
+transformers>=4.43
+# accelerate>=1.3 declares torch>=2; cap keeps pip resolver quiet with torch 1.12 + DGL cu113
+accelerate>=0.21,<=1.2.1
+scipy
+# unrelated conda packages: pip install torchmetrics>=0.7 if you use pytorch-lightning; uninstall peft if unused
