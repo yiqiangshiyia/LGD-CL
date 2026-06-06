@@ -1,108 +1,79 @@
-# LogCL
-The code of LogCL
+# Local-Global Disentangled Contrastive Learning for Temporal Knowledge Graph Reasoning
+<img width="3605" height="1811" alt="图片1" src="https://github.com/user-attachments/assets/b66079fb-ef37-48e0-90a2-f19ef7787d3a" />
 
-% \textbf{5) Sensitivity Analysis of Global Subgraph Size (Top-$N$):}
-% To evaluate the impact of the global subgraph sampling size on model performance, we test the hyperparameter \(N\) over \(\{10, 30, 50, 100, 200, 300\}\). The results show that model performance first improves and then declines as \(N\) increases, which verifies the effectiveness of the RWR sampling strategy. When \(N\) is too small, such as \(N=10\), the sampled subgraph misses key multi-hop topological information, leading to a substantial performance drop. In this case, the MRR on ICEWS14 is only 0.535.
+## detailed hyperparameter settings
+Due to space limits, detailed parameter sensitivity analyses are omitted. Briefly, our model maintains stable performance across a wide range of λ∈[0.05,0.5], peaking at λ=0.1.
 
-% The model achieves the best performance when \(N=50\). At this scale, the transition matrix that incorporates temporal decay and relation similarity can effectively focus on high-value historical entities. This provides the best trade-off between structural information coverage and noise filtering. However, when \(N\) further increases to 200 or 300, a large amount of irrelevant global noise is introduced. This weakens the targeted focusing capability of RWR and causes performance to decline again.
+## Sensitivity Analysis of Global Subgraph Size
+To evaluate the impact of the global subgraph sampling size on model performance, we test the hyperparameter N over {10, 30, 50, 100, 200, 300}. The results show that model performance first improves and then declines as N increases, which verifies the effectiveness of the RWR sampling strategy. When N is too small, such as N=10, the sampled subgraph misses key multi-hop topological information, leading to a substantial performance drop. In this case, the MRR on ICEWS14 is only 0.535.
 
+The model achieves the best performance when N=50. At this scale, the transition matrix that incorporates temporal decay and relation similarity can effectively focus on high-value historical entities. This provides the best trade-off between structural information coverage and noise filtering. However, when N further increases to 200 or 300, a large amount of irrelevant global noise is introduced. This weakens the targeted focusing capability of RWR and causes performance to decline again.
+<img width="3587" height="2391" alt="topn_mrr" src="https://github.com/user-attachments/assets/05f972c1-4285-40a0-9e6a-386c489bcc86" />
 
-
-### Process data
-First, unpack the data files. Then generate the offline history subgraphs and the
-`(s, r) -> {dst}` dictionary used by valid / test sampling.
-
-**Option A (original 2-hop sampler):**
+## Running Instructions
+### Environment Requirements
 ```
-python data/get_his_subg.py
+pip install -r requirement.txt
+pip install scipy transformers>=4.43
 ```
-Run from the `data/` directory, or adjust paths accordingly.
 
-**Option B (Module 3 RWR sampler, window `[t_q - m, t_q - 1]`):**
+### LLM Semantic Prior Encoding
 ```
-python data/build_global_subgraph.py -d ICEWS14 \
-    --window 7 --alpha 0.15 --num-iters 4 --top-n 50 --time-decay 0.5
+python data/encode_llm_prior.py -d ICEWS14 --llm-path ./Qwen2.5-1.5B --gpu 0 --dtype bf16
 ```
-Requires `relation_text_emb.pt` from Module 1 (`encode_llm_prior.py`).
 
-Both scripts write `data/<DATASET>/his_graph_for/`, `data/<DATASET>/his_graph_inv/`
-and `data/<DATASET>/his_dict/` in the format expected by `src/main.py`.
-
-### Module 1: pre-compute the LLM semantic prior
-Module 1 (LLM-driven semantic prior injection) replaces the original `e-w-graph`
-static graph. The frozen LLM (Qwen2.5-1.5B by default) is invoked once **offline**
-to encode every entity and relation into a text-view embedding. Run once per
-dataset:
+### RWR Global Subgraph Sampling
 ```
-python data/encode_llm_prior.py -d ICEWS14 --llm-path ./Qwen2.5-1.5B --gpu 0
+python data/build_global_subgraph.py \
+    -d ICEWS14 \
+    --window 7 \
+    --alpha 0.15 \
+    --num-iters 4 \
+    --top-n 50 \
+    --time-decay 0.5
 ```
-This writes `entity_text_emb.pt` and `relation_text_emb.pt` next to
-`entity2id.txt`, which the main model loads at construction time and combines
-with random structural embeddings via
-`h^{(0)} = h^{struct} + LayerNorm(W_proj * h^{text})`.
 
-### Module 2: query-guided local entity encoder
-Module 2 replaces the GRU-based local sequential aggregator with a
-**query-aware time attention**. For each historical snapshot `tau` in
-`[t_q - m, t_q - 1]`, an L-layer R-GCN starts from the shared `h^(0)` features
-(no cross-snapshot recurrent state) to produce per-entity features
-`h_{i,tau}^(L)` and a snapshot summary `H_tau = AvgPool(h_{i,tau}^(L))`.
-A query joint feature `q_emb = MLP([h_s^(0) || h_r^(0)])` is then used to score
-each snapshot:
-`e_tau = v^T tanh(W1 h_{i,tau} + W2 q_emb + W3 Delta t_tau)`,
-followed by `alpha = softmax(e_tau)` and
-`Z_local = sum_tau alpha_tau H_tau`.
-
-### Module 3: relation-guided global entity encoder
-Module 3 uses the offline history subgraphs produced by `data/get_his_subg.py`
-(forward: `his_graph_for/`, inverse: `his_graph_inv/`) together with the online
-RWR sampler in `RecurrentRGCN.rwr_sampler` and a standard R-GCN over the
-extracted Top-N nodes.
-
-### Module 4: local-global contrastive learning and prediction
-Module 4 fuses the Module 2 local view `Z_local` and the Module 3 global view
-`Z_global`, scores candidates against the LLM-fused `h^(0)` and trains under a
-hard-negative-aware InfoNCE objective.
-
-1. **Feature fusion + KG decoder**.
-   `Z_fuse(s) = W_out * ReLU(W_in * [Z_local(s) || Z_global(s)])`.
-   The ConvTransE decoder now scores every candidate `o` directly against the
-   LLM-fused initial features:
-   `Score(s, r, o, t_q) = Decoder(Z_fuse(s), h_r, h_o^(0))`.
-   The previous ``--pre-weight`` weighted-sum mixing inside the decoder is
-   removed; the flag is kept only for argparse compatibility.
-2. **Hard-negative-aware InfoNCE**. For every batch query `q = (s, r, o, t_q)`
-   and every entity `e_k` that appears in the RWR-sampled global sub-graph
-   (excluding the true tail) we compute
-   `beta_k = exp(sim(Z_local(q), Z_global(q_k^-)) / tau_hard)` and
-   `L_CL = -log( exp(sim(Z_local, Z_global_pos)/tau)
-                / (exp(...) + sum_k beta_k * exp(sim(...)/tau)) )`.
-   Sub-graph membership realises the *structural* hard-negative set (high
-   `pi_v` in the RWR ranking); the implementation in
-   `RecurrentRGCN.get_loss_cl` is fully vectorised and can be extended with
-   *semantic* hard negatives derived from the LLM relation embeddings.
-3. **Joint loss**. `L_total = L_CE + lambda * L_CL`, controlled by
-   ``--cl-weight`` and ``--tau-hard``.
-
-### Train models
-Then the following commands can be used to train the proposed models. By default, dev set evaluation results will be printed when training terminates.
-
-1. Train models
+### Train
 ```
-python src/main.py -d ICEWS14 --train-history-len 7 --test-history-len 7 --dilate-len 1 --lr 0.001 --n-layers 2 --evaluate-every 1 --gpu=0 --n-hidden 200 --self-loop --decoder convtranse --encoder uvrgcn --layer-norm --weight 0.5  --entity-prediction --angle 10 --discount 1 --pre-type all --use-llm-prior --use-cl --temperature 0.03 --tau-hard 0.1 --cl-weight 0.5
+python src/main.py \
+    -d ICEWS14 \
+    --train-history-len 7 \
+    --test-history-len 7 \
+    --dilate-len 1 \
+    --lr 1e-3 \
+    --n-layers 2 \
+    --n-hidden 200 \
+    --self-loop --layer-norm \
+    --decoder convtranse --encoder uvrgcn \
+    --pre-type all \
+    --weight 0.5 --discount 1 --angle 10 \
+    --entity-prediction \
+    --use-llm-prior --llm-text-dim 1536 \
+    --use-cl --temperature 0.07 --tau-hard 0.1 --cl-weight 0.5 \
+    --evaluate-every 1 \
+    --n-epochs 100 \
+    --patience 30 \
+    --dropout 0.3 --input-dropout 0.3 --hidden-dropout 0.3 --feat-dropout 0.3 \
+    --gpu 0
 ```
-Pass `--no-use-llm-prior` (or set `--llm-text-dim` / `--llm-emb-dir`) to ablate
-or relocate the semantic prior. Drop ``--use-cl`` to fall back to a pure
-cross-entropy objective.
-### Cite
-Please cite our paper if you find this code useful for your research.
-~~~
-@article{chen2023local,
-  title={Local-Global History-aware Contrastive Learning for Temporal Knowledge Graph Reasoning},
-  author={Chen, Wei and Wan, Huaiyu and Wu, Yuting and Zhao, Shuyuan and Cheng, Jiayaqi and Li, Yuxin and Lin, Youfang},
-  journal={arXiv preprint arXiv:2312.01601},
-  year={2023}
-}
-~~~
 
-
+### Test
+```
+python src/main.py \
+    -d ICEWS14 \
+    --train-history-len 7 \
+    --test-history-len 7 \
+    --dilate-len 1 \
+    --lr 1e-3 \
+    --n-layers 2 \
+    --n-hidden 200 \
+    --self-loop --layer-norm \
+    --decoder convtranse --encoder uvrgcn \
+    --pre-type all \
+    --weight 0.5 --discount 1 --angle 10 \
+    --entity-prediction \
+    --use-llm-prior --llm-text-dim 1536 \
+    --use-cl --temperature 0.07 --tau-hard 0.1 --cl-weight 0.5 \
+    --gpu 0 \
+    --test
+```
